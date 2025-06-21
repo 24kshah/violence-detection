@@ -24,7 +24,6 @@ uploads/
 Thumbs.db
 
 # Model files (optional)
-*.pt
 
 # Temporary files
 *.tmp
