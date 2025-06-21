@@ -3,14 +3,26 @@ import numpy as np
 import cv2
 import tensorflow as tf
 import os
+import requests
 from tempfile import NamedTemporaryFile
 from ultralytics import YOLO
 
-# Load models
-model = tf.keras.models.load_model("best_violence_model.h5")
-yolo_model = YOLO("yolov8n.pt")  # Replace with your own YOLO model if available
+# --- Download model from Hugging Face if not present ---
+MODEL_URL = "https://huggingface.co/24kshah/violencemodel/resolve/main/best_violence_model.h5"
+MODEL_PATH = "best_violence_model.h5"
 
-# Constants
+if not os.path.exists(MODEL_PATH):
+    with st.spinner("Downloading violence detection model..."):
+        response = requests.get(MODEL_URL)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(response.content)
+        st.success("Model downloaded!")
+
+# --- Load Models ---
+model = tf.keras.models.load_model(MODEL_PATH)
+yolo_model = YOLO("yolov8n.pt")  # Make sure yolov8n.pt is in your repo
+
+# --- Constants ---
 NUM_FRAMES = 30
 FRAME_SIZE = (224, 224)
 LABEL_MAP = {0: "NonViolence", 1: "Violence"}
@@ -26,32 +38,27 @@ def preprocess_video(video_path):
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if ret:
-            resized_frame = cv2.resize(frame, FRAME_SIZE)
-            rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
-            preprocessed = tf.keras.applications.mobilenet_v2.preprocess_input(
-                rgb_frame.astype(np.float32)
-            )
-            frames.append(preprocessed)
+            resized = cv2.resize(frame, FRAME_SIZE)
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            norm = tf.keras.applications.mobilenet_v2.preprocess_input(rgb.astype(np.float32))
+            frames.append(norm)
         else:
-            frames.append(np.zeros((FRAME_SIZE[0], FRAME_SIZE[1], 3), dtype=np.float32))
+            frames.append(np.zeros((224, 224, 3), dtype=np.float32))
     cap.release()
-
-    if len(frames) < NUM_FRAMES:
-        padding = np.zeros((NUM_FRAMES - len(frames), *FRAME_SIZE, 3), dtype=np.float32)
-        frames.extend(padding.tolist())
 
     return np.expand_dims(np.array(frames), axis=0)
 
-# --- Predict from uploaded video ---
+# --- Video Upload Detection ---
 def predict_from_video(video_path):
     video_array = preprocess_video(video_path)
     prediction = model.predict(video_array)
     predicted_class = int(np.argmax(prediction))
     confidence = float(np.max(prediction))
 
-    # Stream video with bounding boxes
+    # Play video with YOLO boxes and classification
     cap = cv2.VideoCapture(video_path)
     stframe = st.empty()
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -60,14 +67,14 @@ def predict_from_video(video_path):
         results = yolo_model.predict(source=frame, conf=0.4, verbose=False)[0]
         frame = results.plot()
 
-        # Add classification label
+        label_color = (0, 255, 0) if predicted_class == 0 else (0, 0, 255)
         cv2.putText(
             frame,
             f"{LABEL_MAP[predicted_class]} ({confidence:.2f})",
             (20, 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.2,
-            (0, 255, 0) if predicted_class == 0 else (0, 0, 255),
+            label_color,
             3,
             cv2.LINE_AA
         )
@@ -75,18 +82,16 @@ def predict_from_video(video_path):
         stframe.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB", use_container_width=True)
 
     cap.release()
-    cv2.destroyAllWindows()
 
     return LABEL_MAP[predicted_class], confidence
 
-# --- Predict from webcam ---
+# --- Webcam Detection ---
 def predict_from_webcam():
     stframe = st.empty()
     cap = cv2.VideoCapture(0)
-
     buffer = []
     label = "Analyzing..."
-    color = (255, 255, 0)  # Yellow
+    color = (255, 255, 0)
 
     stop_button = st.button("Stop Webcam", key="stop_webcam_button")
 
@@ -95,14 +100,11 @@ def predict_from_webcam():
         if not ret:
             break
 
-        resized_frame = cv2.resize(frame, FRAME_SIZE)
-        rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
-        preprocessed = tf.keras.applications.mobilenet_v2.preprocess_input(
-            rgb_frame.astype(np.float32)
-        )
-        buffer.append(preprocessed)
+        resized = cv2.resize(frame, FRAME_SIZE)
+        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+        norm = tf.keras.applications.mobilenet_v2.preprocess_input(rgb.astype(np.float32))
+        buffer.append(norm)
 
-        # Every 30 frames → run classification
         if len(buffer) == NUM_FRAMES:
             input_array = np.expand_dims(np.array(buffer), axis=0)
             prediction = model.predict(input_array)
@@ -112,11 +114,9 @@ def predict_from_webcam():
             color = (0, 255, 0) if predicted_class == 0 else (0, 0, 255)
             buffer = []
 
-        # YOLO detection
         results = yolo_model.predict(source=frame, conf=0.4, verbose=False)[0]
         frame = results.plot()
 
-        # Add classification label
         cv2.putText(
             frame,
             label,
@@ -128,16 +128,14 @@ def predict_from_webcam():
             cv2.LINE_AA
         )
 
-        # Show stream
         stframe.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), channels="RGB", use_container_width=True)
 
         if stop_button:
             break
 
     cap.release()
-    #cv2.destroyAllWindows()
 
-# --- Streamlit App ---
+# --- Streamlit UI ---
 st.title("🔍 Violence Detection System")
 option = st.radio("Choose Input Type", ("Upload Video", "Webcam Feed"))
 
