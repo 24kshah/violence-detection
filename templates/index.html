@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Violence Detection</title>
+</head>
+<body>
+  <h1>Upload a Video File (.mp4)</h1>
+  <form action="/predict" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".mp4" required>
+    <br><br>
+    <button type="submit">Predict</button>
+  </form>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+movinet-env/
+venv/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Uploaded videos
+uploads/
+*.mp4
+
+# Streamlit and logs
+.streamlit/
+*.log
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Model files (optional)
+*.h5
+*.pt
+
+# Temporary files
+*.tmp
+*.bak
+
+# Ignore dataset
+Real Life Violence Dataset/
